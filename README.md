@@ -8,11 +8,11 @@ Firware for the ENC28J60 based AVR ethernet node to be used for data collection 
 
 Nodes to be implemented:
 
-*Leak detector
-*Hot/Cold water flow meter
-*Power use
-*Alarm system
-*Sprinkler system
++Leak detector
++Hot/Cold water flow meter
++Power use
++Alarm system
++Sprinkler system
 
 Sources
 -------
