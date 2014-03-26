@@ -147,7 +147,6 @@ int main(void){
 
         
         uint16_t dat_p,plen;
-		double temp;
 
         CLKPR=(1<<CLKPCE); // change enable
         CLKPR=0; // "no pre-scaler"
@@ -212,8 +211,7 @@ int main(void){
                                 sec=0;
                                 start_web_client=0;
                                 web_client_attempts++;
-								temp = sampleToC(adc_read());
-								sprintf(urlvarstr,"%.1f",temp);
+								itoa(adc_read(),urlvarstr,10);
                                 //put something into urlvarstr here
                                 client_browse_url(PSTR("/index.php?temp="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
                         }
