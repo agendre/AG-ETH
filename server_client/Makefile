@@ -22,7 +22,7 @@ server_client.elf: server_client.o ip_arp_udp_tcp.o enc28j60.o websrv_help_funct
 	$(CC) $(CFLAGS) -o server_client.elf -Wl,-Map,server_client.map server_client.o ip_arp_udp_tcp.o enc28j60.o websrv_help_functions.o dnslkup.o
 #
 server_client.o: server_client.c ../ip_arp_udp_tcp.h ../net.h ../enc28j60.h ip_config.h ../dnslkup.h
-	$(CC) $(CFLAGS) -I. -Os -c server_client.c
+	$(CC) $(CFLAGS) -I. -Os -Wl,-u,vfprintf -lprintf_flt -lm -c server_client.c
 #------------------
 websrv_help_functions.o: ../websrv_help_functions.c ../websrv_help_functions.h ip_config.h 
 	$(CC) $(CFLAGS) -I. -Os -c ../websrv_help_functions.c
@@ -34,7 +34,7 @@ ip_arp_udp_tcp.o: ../ip_arp_udp_tcp.c ../net.h ../enc28j60.h ip_config.h
 	$(CC) $(CFLAGS) -I. -Os -c ../ip_arp_udp_tcp.c
 #------------------
 load: server_client.hex
-	$(LOADCMD) $(LOADARG)test_web_client.hex
+	$(LOADCMD) $(LOADARG)server_client.hex
 #-------------------
 rdfuses:
 	$(LOADCMD) -p $(DUDECPUTYPE) -c avrisp2 -v -q

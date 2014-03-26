@@ -1,7 +1,9 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
+#include <math.h>
 // http://www.nongnu.org/avr-libc/changes-1.8.html:
 #define __PROG_TYPES_COMPAT__
 #include <avr/pgmspace.h>
@@ -30,7 +32,6 @@ static char urlvarstr[21];
 
 #define BUFFER_SIZE 650
 static uint8_t buf[BUFFER_SIZE+1];
-static uint8_t pingsrcip[4];
 static uint8_t start_web_client=0;
 static uint8_t web_client_attempts=0;
 static volatile uint8_t sec=0;
@@ -81,7 +82,7 @@ void init_cnt2(void)
 ISR(TIMER1_COMPA_vect){
         sec++;
 
-		if (sec>20){
+		if (sec>60){
 			start_web_client = 1;
 		}
 }
@@ -116,11 +117,37 @@ void arpresolver_result_callback(uint8_t *ip __attribute__((unused)),uint8_t tra
         }
 }
 
+//Initialize the ADC for readings
+void adc_init(void) {
+	ADMUX = 0; //set ADC for external reference (3.3V)
+	ADCSRA = (1<<ADEN) | (1<<ADPS2) | (1<<ADPS1) | (1<<ADPS0); // ADC enable with clock prescale 1/128
+	ADCSRA |= (1<<ADSC);  //Fire conversion just to warm ADC up
+}
+
+//Read a value from the ADC
+uint16_t adc_read(void) {
+	while(ADCSRA & (1<<ADSC)) {
+		//Do nothing while waiting for bit to be cleared
+	}
+	//Bit now must be cleared so we have result
+	uint16_t result = ADCL;  //Read low byte
+	uint16_t temp = ADCH;  //Read high byte
+	result = result + (temp<<8);  //Combine two 8bit bytes to a 16 bit integer
+	
+	ADCSRA |= (1<<ADSC); //set ADSC bit to start next conversion
+	return(result);
+}
+
+double sampleToC(uint16_t sample) {
+	//(3300mV / 1024 steps) * (1 degree / 10mV)
+	return sample * (3300.0 / 1024.0 / 10.0);
+}
+
 int main(void){
 
         
         uint16_t dat_p,plen;
-        char str[20]; 
+		double temp;
 
         CLKPR=(1<<CLKPCE); // change enable
         CLKPR=0; // "no pre-scaler"
@@ -136,6 +163,9 @@ int main(void){
 
 		//Magjack led config
         enc28j60PhyWrite(PHLCON,0x476);
+
+		//Initiate the ADC
+		adc_init();
         
         //init the web server ethernet/ip layer:
         init_udp_or_www_server(mymac,myip);
@@ -182,8 +212,9 @@ int main(void){
                                 sec=0;
                                 start_web_client=0;
                                 web_client_attempts++;
-                                mk_net_str(str,pingsrcip,4,'.',10);
-                                urlencode(str,urlvarstr);
+								temp = sampleToC(adc_read());
+								sprintf(urlvarstr,"%.1f",temp);
+                                //put something into urlvarstr here
                                 client_browse_url(PSTR("/index.php?temp="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
                         }
                         continue;
