@@ -39,6 +39,7 @@ static volatile uint8_t cnt2step=0;
 static int8_t dns_state=0;
 static int8_t gw_arp_state=0;
 
+#define LED_SETUP DDRD |= (1<<PIND0)
 #define LEDON PORTD |= (1<<PIND0)
 #define LEDOFF PORTD &= ~(1<<PIND0)
 
@@ -165,6 +166,9 @@ int main(void){
 
 		//Initiate the ADC
 		adc_init();
+		
+		//Setup PD0 as output
+		LED_SETUP;
         
         //init the web server ethernet/ip layer:
         init_udp_or_www_server(mymac,myip);
@@ -232,6 +236,16 @@ int main(void){
 
 				if (strncmp("/ ", (char *)&(buf[dat_p+4]),2) == 0){
 					dat_p = print_webpage(buf);
+					www_server_reply(buf,dat_p);
+				}
+				else if (strncmp("/ledon ", (char *)&(buf[dat_p+4]),7) == 0){
+					LEDON;
+					http200ok();
+					www_server_reply(buf,dat_p);
+				}
+				else if (strncmp("/ledoff ", (char *)&(buf[dat_p+4]),8) == 0){
+					LEDOFF;
+					http200ok();
 					www_server_reply(buf,dat_p);
 				}
 				else{
