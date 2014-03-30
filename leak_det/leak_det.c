@@ -42,11 +42,13 @@ static volatile uint8_t sec=0;
 static volatile uint8_t cnt2step=0;
 static int8_t dns_state=0;
 static int8_t gw_arp_state=0;
+static uint8_t alarm = 0;
 
 #define LED_PIN PB5
 #define LED_SETUP DDRB |= (1 << LED_PIN)
 #define LEDON PORTB |= (1 << LED_PIN)
 #define LEDOFF PORTB &= ~(1 << LED_PIN)
+#define INPUT_INIT 
 
 uint16_t http200ok(void)
 {
@@ -67,7 +69,9 @@ uint16_t print_webpage(uint8_t *buf)
 	plen = fill_tcp_data_p(buf,plen,PSTR("<pre>"));
 	plen = fill_tcp_data_p(buf,plen,PSTR("LEAK DETECTOR CURRENT STATUS\r\n"));
 	plen = fill_tcp_data_p(buf,plen,PSTR("============================\r\n"));
-	plen = fill_tcp_data_p(buf,plen,PSTR("SENSOR 1: GOOD\r\n"));
+	plen = fill_tcp_data_p(buf,plen,PSTR("SENSOR 1: "));
+	if (alarm = 1) plen = fill_tcp_data_p(buf,plen,PSTR("LEAK DETECTED!!\r\n"));
+	else plen = fill_tcp_data_p(buf,plen,PSTR("GOOD"));
 	plen = fill_tcp_data_p(buf,plen,PSTR("SENSOR 2: GOOD\r\n"));
 	plen = fill_tcp_data_p(buf,plen,PSTR("MAINS VALVE: OPEN\r\n"));	
 	plen = fill_tcp_data_p(buf,plen,PSTR("Number of Alerts sent: "));		
@@ -100,30 +104,23 @@ ISR(TIMER1_COMPA_vect){
         sec++;
 
 		if (sec>60){
-			start_web_client = 1;
 			sec=0;
+		}
+		if (PINB & (1 << ALARM1_PIN)){
+			start_web_client = 1;
+			alarm = 1;
 		}
 }
 
-// Generate an interrup about ever 1s form the 12.5MHz system clock
-// Since we have that 1024 prescaler we do not really generate a second
-// (1.00000256000655361677s) 
 void timer_init(void)
 {
-        /* write high byte first for 16 bit register access: */
-        TCNT1H=0;  /* set counter to zero*/
+        TCNT1H=0;
         TCNT1L=0;
-        // Mode 4 table 14-4 page 132. CTC mode and top in OCR1A
-        // WGM13=0, WGM12=1, WGM11=0, WGM10=0
         TCCR1A=(0<<COM1B1)|(0<<COM1B0)|(0<<WGM11);
         TCCR1B=(1<<CS12)|(1<<CS10)|(1<<WGM12)|(0<<WGM13); // crystal clock/1024
-
-        // At what value to cause interrupt. You can use this for calibration
-        // of the clock. Theoretical value for 12.5MHz: 12207=0x2f and 0xaf
-        OCR1AH=0x3D;
+        OCR1AH=0x3D; //16MHz: 15625=0x3D and 0x09 to get ~1second
         OCR1AL=0x09;
-        // interrupt mask bit:
-        TIMSK1 = (1 << OCIE1A);
+        TIMSK1 = (1 << OCIE1A); // interrupt mask bit
 }
 
 // the __attribute__((unused)) is a gcc compiler directive to avoid warnings about unsed variables.
@@ -156,11 +153,6 @@ uint16_t adc_read(void) {
 	return(result);
 }
 
-double sampleToC(uint16_t sample) {
-	//(3300mV / 1024 steps) * (1 degree / 10mV)
-	return sample * (3300.0 / 1024.0 / 10.0);
-}
-
 int main(void){
 
         
@@ -172,21 +164,18 @@ int main(void){
 
         /*initialize enc28j60*/
         enc28j60Init(mymac);
-        enc28j60clkout(2); // change clkout from 6.25MHz to 12.5MHz
         _delay_loop_1(0); // 60us
-        
+        enc28j60PhyWrite(PHLCON,0x476);
+
         timer_init();
         sei();
 
-		//Magjack led config
-        enc28j60PhyWrite(PHLCON,0x476);
-
-		//Initiate the ADC
-		adc_init();
+	//Initiate the ADC
+	adc_init();
 		
-		//Setup PD0 as output
-		LED_SETUP;
-		LEDON;
+	//Setup PD0 as output
+	LED_SETUP;
+	LEDON;
         
         //init the web server ethernet/ip layer:
         init_udp_or_www_server(mymac,myip);
@@ -206,7 +195,7 @@ int main(void){
                         if (get_mac_with_arp_wait()==0 && gw_arp_state==1){
                                 // done we have the mac address of the GW
                                 gw_arp_state=2;
-								LEDOFF;
+				LEDOFF;
                         }
                         if (dns_state==0 && gw_arp_state==2){
                                 if (!enc28j60linkup()) continue; // only for dnslkup_request we have to check if the link is up. 
@@ -220,8 +209,8 @@ int main(void){
                                 dnslkup_get_ip(otherside_www_ip);
                         }
                         if (dns_state!=2){
-                                // retry every minute if dns-lookup failed:
-                                if (sec > 60){
+                                // retry every 50s if dns-lookup failed:
+                                if (sec > 50){
                                         dns_state=0;
                                 }
                                 // don't try to use web client before
@@ -233,7 +222,8 @@ int main(void){
                                 LEDON;
                                 start_web_client=0;
                                 web_client_attempts++;
-								urlvarstr = "true"
+				alarm = 1;
+				itoa(alarm,urlvarstr,10);
                                 client_browse_url(PSTR("/leak.php?alarm="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
                         }
                         continue;
@@ -255,15 +245,10 @@ int main(void){
 					dat_p = print_webpage(buf);
 					www_server_reply(buf,dat_p);
 				}
-				else if (strncmp("/ledon ", (char *)&(buf[dat_p+4]),7) == 0){
-					LEDON;
+				else if (strncmp("/reset ", (char *)&(buf[dat_p+4]),7) == 0){
 					http200ok();
 					www_server_reply(buf,dat_p);
-				}
-				else if (strncmp("/ledoff ", (char *)&(buf[dat_p+4]),8) == 0){
-					LEDOFF;
-					http200ok();
-					www_server_reply(buf,dat_p);
+					urlvarstr = "false";
 				}
 				else{
 					dat_p = fill_tcp_data_p(buf,0,PSTR("HTTP/1.0 401 Unauthorized\r\nContent-Type:text/html\r\n\r\n<h1>401 Unauthorized</h1>"));
