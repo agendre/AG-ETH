@@ -17,6 +17,9 @@
 static uint8_t mymac[6] = {0x54,0x55,0x58,0x10,0x00,0x29};
 static uint8_t myip[4] = {192,168,0,50};
 
+//variable for DS18B20 address
+byte rom0[] = {0x28,0xA9,0x0C,0x9D,0x04,0x00,0x,0x};
+
 #define WEBSERVER_VHOST "gendreworld.ca"
 #define MYWWWPORT 80
 
@@ -39,10 +42,9 @@ static volatile uint8_t cnt2step=0;
 static int8_t dns_state=0;
 static int8_t gw_arp_state=0;
 
-#define LED_PIN PC0
-#define LED_SETUP DDRC |= (1 << LED_PIN)
-#define LEDON PORTC |= (1 << LED_PIN)
-#define LEDOFF PORTC &= ~(1 << LED_PIN)
+#define LED_SETUP DDRD |= (1<<PIND0)
+#define LEDON PORTD |= (1<<PIND0)
+#define LEDOFF PORTD &= ~(1<<PIND0)
 
 uint16_t http200ok(void)
 {
@@ -170,7 +172,6 @@ int main(void){
 		
 		//Setup PD0 as output
 		LED_SETUP;
-		LEDON;
         
         //init the web server ethernet/ip layer:
         init_udp_or_www_server(mymac,myip);
@@ -190,7 +191,6 @@ int main(void){
                         if (get_mac_with_arp_wait()==0 && gw_arp_state==1){
                                 // done we have the mac address of the GW
                                 gw_arp_state=2;
-								LEDOFF;
                         }
                         if (dns_state==0 && gw_arp_state==2){
                                 if (!enc28j60linkup()) continue; // only for dnslkup_request we have to check if the link is up. 

@@ -32,6 +32,10 @@ static char urlvarstr[21];
 
 #define BUFFER_SIZE 650
 static uint8_t buf[BUFFER_SIZE+1];
+
+#define TEMP_STRING_SIZE 20
+static char gStrbuf[TEMP_STRING_SIZE];
+
 static uint8_t start_web_client=0;
 static uint8_t web_client_attempts=0;
 static volatile uint8_t sec=0;
@@ -39,16 +43,21 @@ static volatile uint8_t cnt2step=0;
 static int8_t dns_state=0;
 static int8_t gw_arp_state=0;
 
-#define LED_PIN PC0
-#define LED_SETUP DDRC |= (1 << LED_PIN)
-#define LEDON PORTC |= (1 << LED_PIN)
-#define LEDOFF PORTC &= ~(1 << LED_PIN)
+#define LED_PIN PB5
+#define LED_SETUP DDRB |= (1 << LED_PIN)
+#define LEDON PORTB |= (1 << LED_PIN)
+#define LEDOFF PORTB &= ~(1 << LED_PIN)
 
 uint16_t http200ok(void)
 {
         return(fill_tcp_data_p(buf,0,PSTR("HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nPragma: no-cache\r\n\r\n")));
 }
 
+uint16_t fill_tcp_data_int(uint8_t *buf,uint16_t plen,int16_t i)
+{
+        itoa(i,gStrbuf,10); // convert integer to string
+        return(fill_tcp_data(buf,plen,gStrbuf));
+}
 
 // prepare the webpage by writing the data to the tcp send buffer
 uint16_t print_webpage(uint8_t *buf)
@@ -56,7 +65,13 @@ uint16_t print_webpage(uint8_t *buf)
 	uint16_t plen;
 	plen = http200ok();
 	plen = fill_tcp_data_p(buf,plen,PSTR("<pre>"));
-	plen = fill_tcp_data_p(buf,plen,PSTR("Hi, this is Andrew speaking."));
+	plen = fill_tcp_data_p(buf,plen,PSTR("LEAK DETECTOR CURRENT STATUS\r\n"));
+	plen = fill_tcp_data_p(buf,plen,PSTR("============================\r\n"));
+	plen = fill_tcp_data_p(buf,plen,PSTR("SENSOR 1: GOOD\r\n"));
+	plen = fill_tcp_data_p(buf,plen,PSTR("SENSOR 2: GOOD\r\n"));
+	plen = fill_tcp_data_p(buf,plen,PSTR("MAINS VALVE: OPEN\r\n"));	
+	plen = fill_tcp_data_p(buf,plen,PSTR("Number of Alerts sent: "));		
+	plen = fill_tcp_data_int(buf,plen,web_client_attempts);
 	plen = fill_tcp_data_p(buf,plen,PSTR("</pre>\n"));
 	return(plen);
 }
@@ -86,6 +101,7 @@ ISR(TIMER1_COMPA_vect){
 
 		if (sec>60){
 			start_web_client = 1;
+			sec=0;
 		}
 }
 
@@ -215,12 +231,10 @@ int main(void){
                         //----------
                         if (start_web_client==1){
                                 LEDON;
-                                sec=0;
                                 start_web_client=0;
                                 web_client_attempts++;
-								itoa(adc_read(),urlvarstr,10);
-                                //put something into urlvarstr here
-                                client_browse_url(PSTR("/index.php?temp="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+								urlvarstr = "true"
+                                client_browse_url(PSTR("/leak.php?alarm="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
                         }
                         continue;
                 }
