@@ -48,7 +48,6 @@ static uint8_t alarm = 0;
 #define LED_SETUP DDRB |= (1 << LED_PIN)
 #define LEDON PORTB |= (1 << LED_PIN)
 #define LEDOFF PORTB &= ~(1 << LED_PIN)
-#define INPUT_INIT 
 
 uint16_t http200ok(void)
 {
@@ -66,17 +65,18 @@ uint16_t print_webpage(uint8_t *buf)
 {
 	uint16_t plen;
 	plen = http200ok();
+	plen = fill_tcp_data_p(buf,plen,PSTR("<h3>LEAK DETECTOR CURRENT STATUS</h3>"));
 	plen = fill_tcp_data_p(buf,plen,PSTR("<pre>"));
-	plen = fill_tcp_data_p(buf,plen,PSTR("LEAK DETECTOR CURRENT STATUS\r\n"));
 	plen = fill_tcp_data_p(buf,plen,PSTR("============================\r\n"));
 	plen = fill_tcp_data_p(buf,plen,PSTR("SENSOR 1: "));
-	if (alarm = 1) plen = fill_tcp_data_p(buf,plen,PSTR("LEAK DETECTED!!\r\n"));
-	else plen = fill_tcp_data_p(buf,plen,PSTR("GOOD"));
+	if (alarm == 1) plen = fill_tcp_data_p(buf,plen,PSTR("LEAK DETECTED!!\r\n"));
+	else plen = fill_tcp_data_p(buf,plen,PSTR("GOOD\r\n"));
 	plen = fill_tcp_data_p(buf,plen,PSTR("SENSOR 2: GOOD\r\n"));
 	plen = fill_tcp_data_p(buf,plen,PSTR("MAINS VALVE: OPEN\r\n"));	
 	plen = fill_tcp_data_p(buf,plen,PSTR("Number of Alerts sent: "));		
 	plen = fill_tcp_data_int(buf,plen,web_client_attempts);
-	plen = fill_tcp_data_p(buf,plen,PSTR("</pre>\n"));
+	plen = fill_tcp_data_p(buf,plen,PSTR("</pre><br>"));
+	plen = fill_tcp_data_p(buf,plen,PSTR("<a href='reset'>RESET</a>"));
 	return(plen);
 }
 
@@ -106,8 +106,8 @@ ISR(TIMER1_COMPA_vect){
 		if (sec>60){
 			sec=0;
 		}
-		if (PINB & (1 << ALARM1_PIN)){
-			start_web_client = 1;
+		if ( !(PINC & (1 << PC5)) ){
+			if(alarm == 0) start_web_client = 1;
 			alarm = 1;
 		}
 }
@@ -156,19 +156,19 @@ uint16_t adc_read(void) {
 int main(void){
 
         
-        uint16_t dat_p,plen;
+	uint16_t dat_p,plen;
 
-        CLKPR=(1<<CLKPCE); // change enable
-        CLKPR=0; // "no pre-scaler"
-        _delay_loop_1(0); // 60us
+    CLKPR=(1<<CLKPCE); // change enable
+    CLKPR=0; // "no pre-scaler"
+    _delay_loop_1(0); // 60us
 
-        /*initialize enc28j60*/
-        enc28j60Init(mymac);
-        _delay_loop_1(0); // 60us
-        enc28j60PhyWrite(PHLCON,0x476);
+    /*initialize enc28j60*/
+    enc28j60Init(mymac);
+    _delay_loop_1(0); // 60us
+    enc28j60PhyWrite(PHLCON,0x476);
 
-        timer_init();
-        sei();
+    timer_init();
+    sei();
 
 	//Initiate the ADC
 	adc_init();
@@ -176,6 +176,10 @@ int main(void){
 	//Setup PD0 as output
 	LED_SETUP;
 	LEDON;
+	
+	//Setup an input on PC5
+	DDRC &= ~(1 << PC5);
+	PORTC |= (1 << PC5);
         
         //init the web server ethernet/ip layer:
         init_udp_or_www_server(mymac,myip);
@@ -222,8 +226,8 @@ int main(void){
                                 LEDON;
                                 start_web_client=0;
                                 web_client_attempts++;
-				alarm = 1;
-				itoa(alarm,urlvarstr,10);
+								alarm = 1;
+								itoa(alarm,urlvarstr,10);
                                 client_browse_url(PSTR("/leak.php?alarm="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
                         }
                         continue;
@@ -246,9 +250,11 @@ int main(void){
 					www_server_reply(buf,dat_p);
 				}
 				else if (strncmp("/reset ", (char *)&(buf[dat_p+4]),7) == 0){
-					http200ok();
+					dat_p = http200ok();
+					dat_p = fill_tcp_data_p(buf,dat_p,PSTR("<h1>Leak alarm has been reset</h1>"));
+					dat_p = fill_tcp_data_p(buf,dat_p,PSTR("<a href='../'>RETURN</a>"));
 					www_server_reply(buf,dat_p);
-					urlvarstr = "false";
+					alarm = 0;
 				}
 				else{
 					dat_p = fill_tcp_data_p(buf,0,PSTR("HTTP/1.0 401 Unauthorized\r\nContent-Type:text/html\r\n\r\n<h1>401 Unauthorized</h1>"));
