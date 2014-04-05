@@ -44,10 +44,10 @@ static int8_t dns_state=0;
 static int8_t gw_arp_state=0;
 static uint8_t alarm = 0;
 
-#define LED_PIN PB5
-#define LED_SETUP DDRB |= (1 << LED_PIN)
-#define LEDON PORTB |= (1 << LED_PIN)
-#define LEDOFF PORTB &= ~(1 << LED_PIN)
+#define BUZZER_PIN PB5
+#define BUZZER_SETUP DDRB |= (1 << BUZZER_PIN)
+#define BUZZER_ON PORTB |= (1 << BUZZER_PIN)
+#define BUZZER_OFF PORTB &= ~(1 << BUZZER_PIN)
 
 uint16_t http200ok(void)
 {
@@ -71,7 +71,9 @@ uint16_t print_webpage(uint8_t *buf)
 	plen = fill_tcp_data_p(buf,plen,PSTR("SENSOR 1: "));
 	if (alarm == 1) plen = fill_tcp_data_p(buf,plen,PSTR("LEAK DETECTED!!\r\n"));
 	else plen = fill_tcp_data_p(buf,plen,PSTR("GOOD\r\n"));
-	plen = fill_tcp_data_p(buf,plen,PSTR("SENSOR 2: GOOD\r\n"));
+	plen = fill_tcp_data_p(buf,plen,PSTR("SENSOR 2: "));
+	if (alarm == 2) plen = fill_tcp_data_p(buf,plen,PSTR("LEAK DETECTED!!\r\n"));
+	else plen = fill_tcp_data_p(buf,plen,PSTR("GOOD\r\n"));	
 	plen = fill_tcp_data_p(buf,plen,PSTR("MAINS VALVE: OPEN\r\n"));	
 	plen = fill_tcp_data_p(buf,plen,PSTR("Number of Alerts sent: "));		
 	plen = fill_tcp_data_int(buf,plen,web_client_attempts);
@@ -81,7 +83,7 @@ uint16_t print_webpage(uint8_t *buf)
 }
 
 void browserresult_callback(uint16_t webstatuscode,uint16_t datapos __attribute__((unused)), uint16_t len __attribute__((unused))){
-	LEDOFF;
+	//
 }
 
 /* setup timer T2 as an interrupt generating time base.
@@ -106,9 +108,17 @@ ISR(TIMER1_COMPA_vect){
 		if (sec>60){
 			sec=0;
 		}
+		
+		// Set alarm 1 when PC5 is pulled low by sensor
 		if ( !(PINC & (1 << PC5)) ){
 			if(alarm == 0) start_web_client = 1;
 			alarm = 1;
+		}
+		
+		// Set alarm 2 when PC5 is pulled low by sensor
+		if ( !(PINC & (1 << PC4)) ){
+			if(alarm == 0) start_web_client = 1;
+			alarm = 2;
 		}
 }
 
@@ -130,27 +140,6 @@ void arpresolver_result_callback(uint8_t *ip __attribute__((unused)),uint8_t tra
                 // copy mac address over:
                 while(i<6){gwmac[i]=mac[i];i++;}
         }
-}
-
-//Initialize the ADC for readings
-void adc_init(void) {
-	ADMUX = 0; //set ADC for external reference (3.3V)
-	ADCSRA = (1<<ADEN) | (1<<ADPS2) | (1<<ADPS1) | (1<<ADPS0); // ADC enable with clock prescale 1/128
-	ADCSRA |= (1<<ADSC);  //Fire conversion just to warm ADC up
-}
-
-//Read a value from the ADC
-uint16_t adc_read(void) {
-	while(ADCSRA & (1<<ADSC)) {
-		//Do nothing while waiting for bit to be cleared
-	}
-	//Bit now must be cleared so we have result
-	uint16_t result = ADCL;  //Read low byte
-	uint16_t temp = ADCH;  //Read high byte
-	result = result + (temp<<8);  //Combine two 8bit bytes to a 16 bit integer
-	
-	ADCSRA |= (1<<ADSC); //set ADSC bit to start next conversion
-	return(result);
 }
 
 int main(void){
